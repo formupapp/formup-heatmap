@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FormUp Half-Court Heatmap</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; background:#0b0b0c; color:#e8e8ea; }
+    .wrap { position: relative; height: 100%; display:flex; align-items:center; justify-content:center; padding:12px; box-sizing: border-box; }
+    .card { position: relative; width: min(900px, 95vw); aspect-ratio: 9/8; background: #111215; border: 1px solid #26272b; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.35); overflow:hidden; }
+    .hud { position: absolute; inset: 12px 12px auto auto; display:flex; gap:8px; align-items:center; }
+    .badge { padding:6px 10px; border-radius: 999px; background:#1b1c21; border:1px solid #2d2f36; font-size:12px; opacity:.9 }
+    .legend { position:absolute; left:12px; bottom:12px; display:flex; gap:6px; align-items:center; padding:8px 10px; background:#121319cc; border:1px solid #2a2c33; border-radius:12px; backdrop-filter: blur(4px); }
+    .legend-bar { width: 160px; height: 10px; background: linear-gradient(90deg, #1d4ed8, #22d3ee, #22c55e, #fde047, #f59e0b, #ef4444); border-radius: 999px; }
+    svg { width:100%; height:100%; display:block; }
+    .dot { fill:#e5e7eb; fill-opacity:.85; stroke:#000; stroke-width:.75; }
+    .miss { fill:#ef4444; }
+    .make { fill:#22c55e; }
+    .court-line { stroke:#e7e7e7; stroke-opacity:.8; stroke-width:2; fill:none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="hud">
+        <span class="badge" id="modeBadge">Mode: –</span>
+        <span class="badge" id="makesBadge">Makes: –</span>
+        <span class="badge" id="missesBadge">Misses: –</span>
+        <span class="badge" id="fgBadge">FG%: –</span>
+      </div>
+      <div class="legend" id="legend" hidden>
+        <div class="legend-bar"></div>
+        <small>Cool → Hot (lower → higher shot density / FG%)</small>
+      </div>
+      <svg id="viz" viewBox="0 0 1000 888" preserveAspectRatio="xMidYMid meet" aria-label="Half-court shot chart"></svg>
+    </div>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+    const lerp = (a,b,t) => a + (b-a)*t;
+
+    function parseShots() {
+      const raw = qs.get('s') || '';
+      if (!raw) return [];
+      return raw.split(';').map(p => p.trim()).filter(Boolean).map(p => {
+        const [x,y,m] = p.split(',').map(Number);
+        return { x, y, m: (m|0) };
+      }).filter(s => Number.isFinite(s.x) && Number.isFinite(s.y));
+    }
+
+    function mapXY(xp, yp) { return { X: clamp(xp,0,100) * 10, Y: 888 - clamp(yp,0,100) * 8.88 }; }
+
+    function el(n,a={}){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const k in a)e.setAttribute(k,a[k]);if(!a.class&&(n==='path'||n==='line'||n==='circle'||n==='rect'))e.setAttribute('class','court-line');return e;}
+    function line(x1,y1,x2,y2,a={}){return el('line',{x1,y1,x2,y2,...a});}
+    function rect(x,y,w,h,a={}){return el('rect',{x,y,width:w,height:h,fill:'none',...a});}
+    function circle(cx,cy,r,a={}){return el('circle',{cx,cy,r,...a});}
+    function arc(cx,cy,r,s,e,a={}){const sx=cx+r*Math.cos(s),sy=cy+r*Math.sin(s),ex=cx+r*Math.cos(e),ey=cy+r*Math.sin(e),d=`M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}`;return el('path',{d,...a});}
+
+    function drawCourt(svg){
+      const g=el('g',{id:'court'});
+      g.appendChild(line(0,888,1000,888));  // baseline
+      g.appendChild(line(0,0,0,888));       // left
+      g.appendChild(line(1000,0,1000,888)); // right
+      g.appendChild(rect(350,698,300,190)); // paint
+      g.appendChild(arc(500,698,90,Math.PI,2*Math.PI)); // FT arc
+      g.appendChild(circle(500,848,40));    // restricted
+      g.appendChild(circle(500,848,9));     // rim
+      g.appendChild(line(455,842,545,842)); // backboard
+      svg.appendChild(g);
+    }
+
+    function computeHeat(shots, binsX=20, binsY=18, mode='density') {
+      const grid = Array.from({length: binsY}, () => Array.from({length: binsX}, () => ({n:0, m:0})));
+      for (const s of shots) {
+        const bx = Math.min(binsX-1, Math.max(0, Math.floor(s.x/ (100/binsX))));
+        const by = Math.min(binsY-1, Math.max(0, Math.floor(s.y/ (100/binsY))));
+        grid[by][bx].n++; grid[by][bx].m += s.m ? 1 : 0;
+      }
+      let max=0;
+      for (const row of grid) for (const cell of row) {
+        cell.v = (mode==='fg') ? (cell.n ? cell.m/cell.n : 0) : cell.n;
+        if (cell.v > max) max = cell.v;
+      }
+      return {grid, max, binsX, binsY};
+    }
+
+    function colorFor(t){
+      const stops=[[29,78,216],[34,211,238],[34,197,94],[253,224,71],[245,158,11],[239,68,68]];
+      t=Math.max(0,Math.min(1,t));
+      const seg=Math.min(stops.length-2,Math.floor(t*(stops.length-1)));
+      const tt=t*(stops.length-1)-seg; const a=stops[seg], b=stops[seg+1];
+      const r=Math.round(a[0]+(b[0]-a[0])*tt), g=Math.round(a[1]+(b[1]-a[1])*tt), bb=Math.round(a[2]+(b[2]-a[2])*tt);
+      return `rgb(${r},${g},${bb})`;
+    }
+
+    function drawHeat(svg, shots, mode){
+      const {grid,max,binsX,binsY}=computeHeat(shots,20,18,mode);
+      const w=1000/binsX, h=888/binsY, g=el('g',{id:'heat'});
+      for(let by=0; by<binsY; by++){
+        for(let bx=0; bx<binsX; bx++){
+          const c=grid[by][bx]; const t=max>0? c.v/max:0;
+          g.appendChild(rect(bx*w, 888-(by+1)*h, w, h, { fill: colorFor(t), 'fill-opacity': t===0?0:0.75, stroke:'none' }));
+        }
+      }
+      svg.appendChild(g);
+    }
+
+    function drawDots(svg,shots){
+      const g=el('g',{id:'dots'});
+      for(const s of shots){ const {X,Y}=mapXY(s.x,s.y); g.appendChild(circle(X,Y,7,{class:`dot ${s.m?'make':'miss'}`})); }
+      svg.appendChild(g);
+    }
+
+    function main(){
+      const svg=document.getElementById('viz');
+      const shots=parseShots();
+      const mode=(qs.get('mode')||'heat').toLowerCase();
+
+      drawCourt(svg);
+      if(mode==='dots') drawDots(svg, shots);
+      else drawHeat(svg, shots, mode==='fg'?'fg':'density');
+
+      const makes=shots.filter(s=>s.m).length, misses=shots.length-makes;
+      const fg=shots.length?Math.round(makes/shots.length*100):0;
+      document.getElementById('modeBadge').textContent = `Mode: ${mode==='fg'?'Zone FG%': mode==='heat'?'Density':'Shot Dots'}`;
+      document.getElementById('makesBadge').textContent = `Makes: ${makes}`;
+      document.getElementById('missesBadge').textContent = `Misses: ${misses}`;
+      document.getElementById('fgBadge').textContent = `FG%: ${fg}`;
+      document.getElementById('legend').hidden = (mode==='dots');
+    }
+    main();
+  </script>
+</body>
+</html>
