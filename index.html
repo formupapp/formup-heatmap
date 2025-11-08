@@ -25,8 +25,8 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <!-- tiny hidden SVG just to host filters -->
-      <svg style="position:absolute; width:0; height:0" aria-hidden="true" focusable="false">
+      <!-- hidden defs (filters) -->
+      <svg style="position:absolute;width:0;height:0" aria-hidden="true" focusable="false">
         <defs>
           <filter id="smooth-heat" x="-10%" y="-10%" width="120%" height="120%">
             <feGaussianBlur stdDeviation="4" />
@@ -34,7 +34,7 @@
         </defs>
       </svg>
 
-      <div class="hud">
+      <div class="hud" aria-live="polite">
         <span class="badge" id="modeBadge">Mode: –</span>
         <span class="badge" id="makesBadge">Makes: –</span>
         <span class="badge" id="missesBadge">Misses: –</span>
@@ -42,7 +42,7 @@
       </div>
 
       <div class="legend" id="legend" hidden>
-        <div class="legend-bar"></div>
+        <div class="legend-bar" aria-hidden="true"></div>
         <small style="opacity:.85">Cool → Hot (lower → higher density / FG%)</small>
       </div>
 
@@ -61,44 +61,50 @@
   </div>
 
   <script>
-    // ---------- Helpers ----------
+    // ---------- helpers ----------
     const qs = new URLSearchParams(location.search);
     const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
     const lerp  = (a,b,t) => a + (b-a)*t;
 
     // Parse shots from ?s=x,y,m;... (x,y in 0–100; m=1 make, 0 miss)
     function parseShots() {
-      const raw = qs.get('s') || '';
+      const raw = (qs.get('s') || '').trim();
       if (!raw) return [];
-      return raw.split(';').map(p => p.trim()).filter(Boolean).map(p => {
+      // guard against huge query strings (keeps render snappy)
+      const parts = raw.split(';').map(p => p.trim()).filter(Boolean).slice(0, 800);
+      const shots = [];
+      for (const p of parts) {
         const [x,y,m] = p.split(',').map(Number);
-        return { x, y, m: (m|0) };
-      }).filter(s => Number.isFinite(s.x) && Number.isFinite(s.y));
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          shots.push({ x, y, m: (m|0) });
+        }
+      }
+      return shots;
     }
 
     // Optional custom bins: ?bins=30x26
     function parseBins() {
       const b = (qs.get('bins')||'').toLowerCase();
       const m = b.match(/^(\d+)[x×](\d+)$/);
-      if (!m) return {bx:30, by:26}; // nice smooth default
+      if (!m) return {bx:30, by:26}; // smooth default
       return {bx: Math.max(8, +m[1]), by: Math.max(8, +m[2])};
     }
 
-    // Map perc coords to viewBox coords
+    // % coords to viewBox coords
     function mapXY(xp, yp) {
       return { X: clamp(xp,0,100)*10, Y: 888 - clamp(yp,0,100)*8.88 };
     }
 
-    // Court
+    // ----- court -----
     function drawCourt(svg){
       const g = el('g',{id:'court'});
       // baseline + sidelines
       g.appendChild(line(0,888,1000,888));
       g.appendChild(line(0,0,0,888));
       g.appendChild(line(1000,0,1000,888));
-      // paint
+      // paint (key)
       g.appendChild(rect(350,888-190,300,190));
-      // FT arc
+      // free-throw arc
       g.appendChild(arc(500,888-190,90,Math.PI,2*Math.PI));
       // rim + restricted + backboard
       g.appendChild(circle(500,888-40,40));
@@ -107,13 +113,14 @@
       svg.appendChild(g);
     }
 
-    // Heat aggregation
+    // heat aggregation
     function computeHeat(shots, binsX, binsY, mode){
       const grid = Array.from({length: binsY},()=>Array.from({length: binsX},()=>({n:0,m:0,v:0})));
       for (const s of shots){
         const bx = Math.min(binsX-1, Math.max(0, Math.floor(s.x/(100/binsX))));
         const by = Math.min(binsY-1, Math.max(0, Math.floor(s.y/(100/binsY))));
-        grid[by][bx].n++; grid[by][bx].m += s.m?1:0;
+        const cell = grid[by][bx];
+        cell.n++; cell.m += s.m?1:0;
       }
       let max=0;
       for (const row of grid) for (const cell of row){
@@ -156,14 +163,16 @@
       svg.appendChild(g);
     }
 
-    // Build
+    // ----- build -----
     function main(){
       const svg = document.getElementById('viz');
       const shots = parseShots();
       const {bx,by} = parseBins();
       const mode = (qs.get('mode')||'heat').toLowerCase(); // 'heat' | 'fg' | 'dots'
       const showLegend = (qs.get('legend')||'1') !== '0';
-      const locked = qs.get('lock') === '1';
+
+      // lock disabled for testing; switch to qs.get('lock') === '1' when you monetize
+      const locked = false;
 
       drawCourt(svg);
 
@@ -185,7 +194,7 @@
         'Params: <b>s</b>=x,y,m;… (<i>0–100%</i>), <b>mode</b>=heat|fg|dots, <b>legend</b>=1|0, <b>lock</b>=1|0, <b>bins</b>=WxH';
     }
 
-    // ---------- tiny SVG helpers ----------
+    // tiny SVG helpers
     const byId = id => document.getElementById(id);
     function el(n,a={}){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const k in a)e.setAttribute(k,a[k]);if(!a.class&&(n==='path'||n==='line'||n==='circle'||n==='rect'))e.setAttribute('class','court-line');return e;}
     function line(x1,y1,x2,y2,a={}){return el('line',{x1,y1,x2,y2,...a});}
