@@ -11,23 +11,23 @@
     .hud{position:absolute;inset:12px 12px auto auto;display:flex;gap:8px;align-items:center}
     .badge{padding:6px 10px;border-radius:999px;background:#1b1c21;border:1px solid #2d2f36;font-size:12px;opacity:.95}
     .legend{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;align-items:center;padding:8px 10px;background:#121319cc;border:1px solid #2a2c33;border-radius:12px;backdrop-filter:blur(4px)}
-    .legend-bar{width:180px;height:10px;border-radius:999px;background:linear-gradient(90deg,#440154,#472878,#3e4989,#2f6c8e,#22a884,#7ad151,#fde725)}
+    .legend-bar{width:220px;height:10px;border-radius:999px;background:linear-gradient(90deg,#440154,#472878,#3e4989,#2f6c8e,#22a884,#7ad151,#fde725)}
     svg{width:100%;height:100%;display:block}
     .dot{fill:#e5e7eb;fill-opacity:.85;stroke:#000;stroke-width:.75}
     .make{fill:#22c55e}.miss{fill:#ef4444}
     .court-line{stroke:#e7e7e7;stroke-opacity:.9;stroke-width:2;fill:none}
+    .zone-line{stroke:#9aa0a6;stroke-opacity:.55;stroke-dasharray:6 6;stroke-width:1.5;fill:none}
     .notice{position:absolute;left:12px;top:12px;font-size:12px;opacity:.7}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <!-- defs (blur filter) -->
+      <!-- defs (adjustable blur) -->
       <svg style="position:absolute;width:0;height:0" aria-hidden="true" focusable="false">
         <defs>
           <filter id="smooth-heat" x="-10%" y="-10%" width="120%" height="120%">
-            <!-- softer blur to avoid checkerboarding -->
-            <feGaussianBlur stdDeviation="3" />
+            <feGaussianBlur id="gblur" stdDeviation="3" />
           </filter>
         </defs>
       </svg>
@@ -40,7 +40,7 @@
       </div>
 
       <div class="legend" id="legend" hidden>
-        <div class="legend-bar" aria-hidden="true"></div>
+        <div class="legend-bar" id="legendBar" aria-hidden="true"></div>
         <small id="legendLabel" style="opacity:.85">Cool → Hot</small>
       </div>
 
@@ -57,7 +57,7 @@
     const lerp  = (a,b,t) => a + (b-a)*t;
     const byId  = id => document.getElementById(id);
 
-    // Viridis LUT (compact)
+    // Viridis LUT (perceptually uniform)
     const VIRIDIS = [
       [68,1,84],[71,44,122],[59,81,139],[44,113,142],[33,144,141],
       [39,173,129],[92,200,99],[170,220,50],[253,231,37]
@@ -72,11 +72,19 @@
       return `rgb(${r},${g},${bl})`;
     }
 
+    // Diverging map for fgdiff (purple→gray→yellow via viridis + reversed)
+    function diverge(v){ // v ∈ [-1,1]
+      const t = (v+1)/2;
+      // center gray for ~0
+      if (Math.abs(v) < 0.02) return 'rgb(180,180,180)';
+      return viridis(t);
+    }
+
     // Parse shots from ?s=x,y,m;... (x,y in 0–100; m=1 make, 0 miss)
     function parseShots() {
       const raw = (qs.get('s') || '').trim();
       if (!raw) return [];
-      const parts = raw.split(';').map(p => p.trim()).filter(Boolean).slice(0, 1500);
+      const parts = raw.split(';').map(p => p.trim()).filter(Boolean).slice(0, 2000);
       const shots = [];
       for (const p of parts) {
         const [x,y,m] = p.split(',').map(Number);
@@ -86,10 +94,10 @@
     }
 
     // Optional custom bins: ?bins=30x26
-    function parseBins() {
+    function parseBins(defaultBx=30, defaultBy=26) {
       const b = (qs.get('bins')||'').toLowerCase();
       const m = b.match(/^(\d+)[x×](\d+)$/);
-      if (!m) return {bx:30, by:26}; // smooth default
+      if (!m) return {bx:defaultBx, by:defaultBy};
       return {bx: Math.max(8, +m[1]), by: Math.max(8, +m[2])};
     }
 
@@ -98,31 +106,91 @@
       return { X: clamp(xp,0,100)*10, Y: 888 - clamp(yp,0,100)*8.88 };
     }
 
-    // -------- court (clean, proven layout) --------
+    // ---------- court geometry (NBA) ----------
+    const PX_PER_FT_X = 1000 / 50;   // width: 50 ft
+    const PX_PER_FT_Y =  888 / 47;   // half-court length: 47 ft
+    const fx = ft => ft * PX_PER_FT_X;
+    const fy = ft => ft * PX_PER_FT_Y;
+
+    const RIM_TO_BASELINE_FT = 5.25;
+    const KEY_WIDTH_FT       = 16;
+    const KEY_DEPTH_FT       = 19;
+    const RESTRICTED_R_FT    = 4;
+    const THREE_R_FT         = 23.75;
+    const THREE_CORNER_FT    = 22;
+
+    // tiny SVG helpers
     function el(n,a={}){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const k in a)e.setAttribute(k,a[k]);if(!a.class&&(n==='path'||n==='line'||n==='circle'||n==='rect'))e.setAttribute('class','court-line');return e;}
     function line(x1,y1,x2,y2,a={}){return el('line',{x1,y1,x2,y2,...a});}
     function rect(x,y,w,h,a={}){return el('rect',{x,y,width:w,height:h,fill:'none',...a});}
     function circle(cx,cy,r,a={}){return el('circle',{cx,cy,r,...a});}
-    function arc(cx,cy,r,s,e,a={}){const sx=cx+r*Math.cos(s),sy=cy+r*Math.sin(s),ex=cx+r*Math.cos(e),ey=cy+r*Math.sin(e),d=`M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}`;return el('path',{d,...a});}
+    function arc(cx,cy,rx,ry,s,e,a={}){ // elliptical arc (rx==ry ⇒ circle)
+      const sx = cx + rx*Math.cos(s), sy = cy + ry*Math.sin(s);
+      const ex = cx + rx*Math.cos(e), ey = cy + ry*Math.sin(e);
+      const large = (e - s) % (2*Math.PI) > Math.PI ? 1 : 0;
+      const d=`M ${sx} ${sy} A ${rx} ${ry} 0 ${large} 1 ${ex} ${ey}`;
+      return el('path',{d,...a});
+    }
 
-    function drawCourt(svg){
+    function drawThreePoint(svg, cx, cy){
+      const g3 = el('g',{id:'three'});
+      const rx = fx(THREE_R_FT), ry = fy(THREE_R_FT);
+      const xCorner = fx(THREE_CORNER_FT);
+      const theta = Math.acos(THREE_CORNER_FT / THREE_R_FT);
+      const yFeet = THREE_R_FT * Math.sin(theta);
+      const yArc  = cy - fy(yFeet);
+      const xl = cx - xCorner, xr = cx + xCorner;
+
+      g3.appendChild(line(xl, 888, xl, yArc));
+      g3.appendChild(line(xr, 888, xr, yArc));
+      g3.appendChild(arc(cx, cy, rx, ry, Math.PI - theta, theta)); // top arc
+      svg.appendChild(g3);
+    }
+
+    function drawCourt(svg, zones=false){
       const g = el('g',{id:'court'});
-      // edges
+      // sidelines/baseline
       g.appendChild(line(0,888,1000,888));
       g.appendChild(line(0,0,0,888));
       g.appendChild(line(1000,0,1000,888));
-      // key & FT arc (these looked correct in your earlier version)
-      g.appendChild(rect(350,698,300,190));                  // paint
-      g.appendChild(arc(500,698,90,Math.PI,2*Math.PI));      // FT arc
-      // hoop + restricted + backboard
-      g.appendChild(circle(500,848,40));                     // restricted area
-      g.appendChild(circle(500,848,9));                      // rim
-      g.appendChild(line(455,842,545,842));                  // backboard
+
+      const cx = 500;
+      const cy = 888 - fy(RIM_TO_BASELINE_FT);
+
+      // paint
+      const keyW = fx(KEY_WIDTH_FT);
+      const keyTopY = 888 - fy(KEY_DEPTH_FT);
+      g.appendChild(rect(cx - keyW/2, keyTopY, keyW, fy(KEY_DEPTH_FT)));
+
+      // free-throw arc (top half, 6 ft)
+      g.appendChild(arc(cx, keyTopY, fy(6), fy(6), Math.PI, 2*Math.PI));
+
+      // restricted + rim + backboard
+      g.appendChild(circle(cx, cy, fy(RESTRICTED_R_FT)));
+      g.appendChild(circle(cx, cy, fy(0.75)));
+      const bbY = 888 - fy(4) - 6; // slight visual offset
+      g.appendChild(line(cx - fx(3), bbY, cx + fx(3), bbY));
+
+      // 3pt
+      drawThreePoint(svg, cx, cy);
+
+      // optional zone guides
+      if (zones){
+        const zg = el('g',{id:'zones'});
+        zg.appendChild(rect(cx - keyW/2, keyTopY, keyW, fy(KEY_DEPTH_FT), {class:'zone-line'}));
+        // atb (above-the-break) reference = arc meet height
+        const theta = Math.acos(THREE_CORNER_FT / THREE_R_FT);
+        const yFeet = THREE_R_FT * Math.sin(theta);
+        const atbY  = cy - fy(yFeet);
+        zg.appendChild(line(0, atbY, 1000, atbY, {class:'zone-line'}));
+        svg.appendChild(zg);
+      }
+
       svg.appendChild(g);
     }
 
-    // --------------- heat aggregation ---------------
-    function computeHeat(shots, binsX, binsY, mode){
+    // --------------- binning / heat ---------------
+    function computeHeat(shots, binsX, binsY, mode, baseline){
       const grid = Array.from({length: binsY},()=>Array.from({length: binsX},()=>({n:0,m:0,v:0})));
       for (const s of shots){
         const bx = Math.min(binsX-1, Math.max(0, Math.floor(s.x/(100/binsX))));
@@ -130,37 +198,59 @@
         const cell = grid[by][bx];
         cell.n++; cell.m += s.m?1:0;
       }
-      let max=0;
+      let max=0, maxAbs=0;
       for (const row of grid) for (const cell of row){
-        cell.v = (mode==='fg') ? (cell.n ? (cell.m/cell.n) : 0) : cell.n;
-        if (cell.v > max) max = cell.v;
+        if (mode==='fg') {
+          cell.v = cell.n ? (cell.m/cell.n) : 0;
+          if (cell.v > max) max = cell.v;
+        } else if (mode==='fgdiff') {
+          const p = cell.n ? (cell.m/cell.n) : 0;
+          const d = p - baseline;
+          cell.v = d;
+          if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d);
+        } else {
+          cell.v = cell.n; // density
+          if (cell.v > max) max = cell.v;
+        }
       }
-      return {grid,max};
+      return {grid,max,maxAbs};
     }
 
-    function drawHeat(svg, shots, mode, binsX, binsY){
-      const {grid,max} = computeHeat(shots,binsX,binsY,mode);
+    function drawHeat(svg, shots, mode, binsX, binsY, baseline){
+      const {grid,max,maxAbs} = computeHeat(shots,binsX,binsY,mode,baseline);
       const w=1000/binsX, h=888/binsY;
       const g=el('g',{id:'heat', filter:'url(#smooth-heat)'});
       for (let by=0; by<binsY; by++){
         for (let bx=0; bx<binsX; bx++){
           const c=grid[by][bx];
 
-          // *** KEY FIXES ***
-          // 1) Density: don't paint empty cells (kills checkerboard)
-          // 2) FG%: hide very tiny samples, fade in with N
-          if (mode !== 'fg' && c.n === 0) continue;
+          // density: paint only non-empty — avoids checkerboard
+          if (mode!=='fg' && mode!=='fgdiff' && c.n===0) continue;
 
-          const t = max>0 ? (c.v/max) : 0;
+          // fg modes: hide tiny samples, fade by attempts
           let alpha = 0.55;
-          if (mode==='fg'){
+          if (mode==='fg' || mode==='fgdiff'){
             if (c.n < 3) continue;
-            alpha = Math.min(c.n/12, 0.75);
+            alpha = Math.min(0.75, 0.35 + c.n/20);
           }
-          if (t <= 0) continue;
+
+          let fill;
+          if (mode==='fg') {
+            const t = max>0 ? (c.v/max) : 0;
+            if (t<=0) continue;
+            fill = viridis(t);
+          } else if (mode==='fgdiff') {
+            const t = (maxAbs>0) ? (c.v / maxAbs) : 0; // -1..1
+            if (t===0) continue;
+            fill = diverge(t); // purple→gray→yellow
+          } else {
+            const t = max>0 ? (c.v/max) : 0;
+            if (t<=0) continue;
+            fill = viridis(t);
+          }
 
           g.appendChild(rect(bx*w, 888-(by+1)*h, w, h, {
-            fill: viridis(t),
+            fill,
             'fill-opacity': alpha,
             stroke: 'none'
           }));
@@ -174,7 +264,7 @@
       const g = el('g',{id:'dots'});
       for (const s of shots){
         const {X,Y}=mapXY(s.x,s.y);
-        g.appendChild(circle(X,Y,5,{class:`dot ${s.m?'make':'miss'}`, 'fill-opacity':0.6}));
+        g.appendChild(circle(X,Y,5,{class:`dot ${s.m?'make':'miss'}`, 'fill-opacity':0.62}));
       }
       svg.appendChild(g);
     }
@@ -183,35 +273,56 @@
     function main(){
       const svg = byId('viz');
       const shots = parseShots();
-      const {bx,by} = parseBins();
-      const mode = (qs.get('mode')||'heat').toLowerCase(); // 'heat' | 'fg' | 'dots'
-      const showLegend = (qs.get('legend')||'1') !== '0';
 
-      drawCourt(svg);
+      // Auto-pretty for small samples (increase blur + coarser bins)
+      const gblur = byId('gblur');
+      let defaultBx = 30, defaultBy = 26;
+      if (shots.length < 40 && (qs.get('mode')||'heat') !== 'fg') {
+        defaultBx = 24; defaultBy = 20;
+        gblur.setAttribute('stdDeviation','6');
+      } else {
+        gblur.setAttribute('stdDeviation','3');
+      }
+
+      const {bx,by} = parseBins(defaultBx, defaultBy);
+      const mode = (qs.get('mode')||'heat').toLowerCase(); // 'heat'|'fg'|'fgdiff'|'dots'
+      const showLegend = (qs.get('legend')||'1') !== '0';
+      const showZones  = (qs.get('zones')||'0') === '1';
+      const baseline   = parseFloat(qs.get('baseline') || '0.35'); // for fgdiff
+
+      drawCourt(svg, showZones);
 
       if (mode === 'dots') {
-        drawHeat(svg, shots, 'density', bx, by);
+        drawHeat(svg, shots, 'density', bx, by, baseline);
         drawDots(svg, shots);
       } else {
-        drawHeat(svg, shots, mode==='fg'?'fg':'density', bx, by);
+        drawHeat(svg, shots, mode, bx, by, baseline);
         drawDots(svg, shots);
       }
 
       const makes = shots.filter(s=>s.m).length, misses = shots.length - makes;
       const fg = shots.length ? Math.round(makes/shots.length*100) : 0;
 
-      byId('modeBadge').textContent   = `Mode: ${mode==='fg'?'Zone FG%': mode==='heat'?'Density':'Shot Dots'}`;
+      byId('modeBadge').textContent   = `Mode: ${mode==='fg'?'Zone FG%': mode==='fgdiff'?'FG% vs Baseline':'Density'}`;
       byId('makesBadge').textContent  = `Makes: ${makes}`;
       byId('missesBadge').textContent = `Misses: ${misses}`;
       byId('fgBadge').textContent     = `FG%: ${fg}`;
 
-      byId('legendLabel').textContent = mode==='fg'
-        ? 'Cool → Hot (lower → higher FG%)'
-        : 'Cool → Hot (lower → higher attempt density)';
+      if (mode==='fg') {
+        byId('legendBar').style.background = 'linear-gradient(90deg,#440154,#472878,#3e4989,#2f6c8e,#22a884,#7ad151,#fde725)';
+        byId('legendLabel').textContent = 'Cool → Hot (lower → higher FG%)';
+      } else if (mode==='fgdiff') {
+        // reuse viridis bar; copy updates not essential for functional use
+        byId('legendBar').style.background = 'linear-gradient(90deg,#440154,#472878,#3e4989,#9aa0a6,#7ad151,#bcea4e,#fde725)';
+        byId('legendLabel').textContent = `Below ← FG% vs Baseline (${(baseline*100)|0}%) → Above`;
+      } else {
+        byId('legendBar').style.background = 'linear-gradient(90deg,#440154,#472878,#3e4989,#2f6c8e,#22a884,#7ad151,#fde725)';
+        byId('legendLabel').textContent = 'Cool → Hot (lower → higher attempt density)';
+      }
       byId('legend').hidden = !showLegend;
 
       byId('notice').innerHTML =
-        'Params: <b>s</b>=x,y,m;… (0–100), <b>mode</b>=heat|fg|dots, <b>legend</b>=1|0, <b>dots</b>=1|0, <b>bins</b>=WxH';
+        'Params: <b>s</b>=x,y,m;… (0–100), <b>mode</b>=heat|fg|fgdiff|dots, <b>legend</b>=1|0, <b>zones</b>=1|0, <b>dots</b>=1|0, <b>bins</b>=WxH, <b>baseline</b>=0.35';
     }
 
     main();
