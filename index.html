@@ -17,9 +17,6 @@
     .make{fill:#22c55e}.miss{fill:#ef4444}
     .court-line{stroke:#e7e7e7;stroke-opacity:.85;stroke-width:2;fill:none}
     .notice{position:absolute;left:12px;top:12px;font-size:12px;opacity:.7}
-    .lock{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.38);backdrop-filter:blur(6px)}
-    .lock .panel{background:#0f1116;border:1px solid #2a2d35;padding:14px 16px;border-radius:14px;text-align:center}
-    .lock .cta{display:inline-block;margin-top:8px;padding:8px 12px;border-radius:999px;background:#2563eb;color:#fff;font-weight:700;text-decoration:none}
   </style>
 </head>
 <body>
@@ -48,14 +45,6 @@
 
       <svg id="viz" viewBox="0 0 1000 888" preserveAspectRatio="xMidYMid meet" aria-label="Half-court shot chart"></svg>
 
-      <div class="lock" id="lock" hidden>
-        <div class="panel">
-          <div style="font-weight:800;margin-bottom:4px">Heat Map (Premium)</div>
-          <div style="opacity:.8">Unlock hi-res zones, FG% overlay, and filters.</div>
-          <a class="cta" href="#" onclick="window.parent?.postMessage({type:'formup:upgrade'},'*');return false;">Upgrade</a>
-        </div>
-      </div>
-
       <div class="notice" id="notice"></div>
     </div>
   </div>
@@ -70,7 +59,7 @@
     function parseShots() {
       const raw = (qs.get('s') || '').trim();
       if (!raw) return [];
-      // guard against huge query strings (keeps render snappy)
+      // cap length for performance
       const parts = raw.split(';').map(p => p.trim()).filter(Boolean).slice(0, 800);
       const shots = [];
       for (const p of parts) {
@@ -171,9 +160,6 @@
       const mode = (qs.get('mode')||'heat').toLowerCase(); // 'heat' | 'fg' | 'dots'
       const showLegend = (qs.get('legend')||'1') !== '0';
 
-      // lock disabled for testing; switch to qs.get('lock') === '1' when you monetize
-      const locked = false;
-
       drawCourt(svg);
 
       if (mode === 'dots') drawDots(svg, shots);
@@ -188,10 +174,9 @@
       byId('fgBadge').textContent = `FG%: ${fg}`;
 
       byId('legend').hidden = (mode==='dots') || !showLegend;
-      byId('lock').hidden = !locked;
 
       byId('notice').innerHTML =
-        'Params: <b>s</b>=x,y,m;… (<i>0–100%</i>), <b>mode</b>=heat|fg|dots, <b>legend</b>=1|0, <b>lock</b>=1|0, <b>bins</b>=WxH';
+        'Params: <b>s</b>=x,y,m;… (<i>0–100%</i>), <b>mode</b>=heat|fg|dots, <b>legend</b>=1|0, <b>bins</b>=WxH';
     }
 
     // tiny SVG helpers
