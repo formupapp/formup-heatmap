@@ -15,8 +15,7 @@
     svg{width:100%;height:100%;display:block}
     .dot{fill:#e5e7eb;fill-opacity:.85;stroke:#000;stroke-width:.75}
     .make{fill:#22c55e}.miss{fill:#ef4444}
-    .court-line{stroke:#e7e7e7;stroke-opacity:.85;stroke-width:2;fill:none}
-    .zone-line{stroke:#9aa0a6;stroke-opacity:.55;stroke-dasharray:6 6;stroke-width:1.5;fill:none}
+    .court-line{stroke:#e7e7e7;stroke-opacity:.9;stroke-width:2;fill:none}
     .notice{position:absolute;left:12px;top:12px;font-size:12px;opacity:.7}
   </style>
 </head>
@@ -27,7 +26,8 @@
       <svg style="position:absolute;width:0;height:0" aria-hidden="true" focusable="false">
         <defs>
           <filter id="smooth-heat" x="-10%" y="-10%" width="120%" height="120%">
-            <feGaussianBlur stdDeviation="4" />
+            <!-- softer blur to avoid checkerboarding -->
+            <feGaussianBlur stdDeviation="3" />
           </filter>
         </defs>
       </svg>
@@ -51,13 +51,13 @@
   </div>
 
   <script>
-    // ---------------- helpers ----------------
+    // ---------- helpers ----------
     const qs = new URLSearchParams(location.search);
     const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
     const lerp  = (a,b,t) => a + (b-a)*t;
     const byId  = id => document.getElementById(id);
 
-    // Viridis (approx) LUT (0..1) → rgb
+    // Viridis LUT (compact)
     const VIRIDIS = [
       [68,1,84],[71,44,122],[59,81,139],[44,113,142],[33,144,141],
       [39,173,129],[92,200,99],[170,220,50],[253,231,37]
@@ -93,84 +93,31 @@
       return {bx: Math.max(8, +m[1]), by: Math.max(8, +m[2])};
     }
 
-    // % coords → viewBox px (our shot data space)
+    // % coords → viewBox px
     function mapXY(xp, yp) {
       return { X: clamp(xp,0,100)*10, Y: 888 - clamp(yp,0,100)*8.88 };
     }
 
-    // ---------------- court (NBA) ----------------
-    // We'll use real feet → px mapping for geometry
-    const FT_W = 50, FT_L = 47;          // half court feet
-    const PX_W = 1000, PX_H = 888;
-    const PXF = { x: PX_W/FT_W, y: PX_H/FT_L }; // px per foot
-    const HOOP_Y_FT = 5.25;               // hoop center from baseline (≈5'3")
-    const RIM_R_FT = 0.75;                // 9" ring radius
-    const RESTR_R_FT = 4;                 // restricted circle radius
-    const KEY_W_FT = 16, KEY_L_FT = 19;   // paint 16'w × 19'l
-    const FT_ARC_R_FT = 6;                // FT arc radius (approx)
-    const ARC_R_FT = 23.75;               // 3pt arc radius
-    const CORNER_DIST_FT = 22;            // corner 3 horizontal offset
-
-    function f2x(ft){ return PX_W/2 + ft*PXF.x; }       // feet from center → x px
-    function f2y(ft){ return PX_H - ft*PXF.y; }         // feet from baseline → y px
+    // -------- court (clean, proven layout) --------
+    function el(n,a={}){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const k in a)e.setAttribute(k,a[k]);if(!a.class&&(n==='path'||n==='line'||n==='circle'||n==='rect'))e.setAttribute('class','court-line');return e;}
+    function line(x1,y1,x2,y2,a={}){return el('line',{x1,y1,x2,y2,...a});}
+    function rect(x,y,w,h,a={}){return el('rect',{x,y,width:w,height:h,fill:'none',...a});}
+    function circle(cx,cy,r,a={}){return el('circle',{cx,cy,r,...a});}
+    function arc(cx,cy,r,s,e,a={}){const sx=cx+r*Math.cos(s),sy=cy+r*Math.sin(s),ex=cx+r*Math.cos(e),ey=cy+r*Math.sin(e),d=`M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}`;return el('path',{d,...a});}
 
     function drawCourt(svg){
       const g = el('g',{id:'court'});
-      // sidelines + baseline
-      g.appendChild(line(0,PX_H,PX_W,PX_H));
-      g.appendChild(line(0,0,0,PX_H));
-      g.appendChild(line(PX_W,0,PX_W,PX_H));
-
-      // paint (centered)
-      const keyX = PX_W/2 - (KEY_W_FT*PXF.x)/2;
-      const keyY = f2y(KEY_L_FT);
-      g.appendChild(rect(keyX, keyY, KEY_W_FT*PXF.x, KEY_L_FT*PXF.y));
-
-      // free-throw arc (approx, centered on FT line midpoint)
-      g.appendChild(arc(PX_W/2, f2y(KEY_L_FT), FT_ARC_R_FT*PXF.x, Math.PI, 2*Math.PI));
-
+      // edges
+      g.appendChild(line(0,888,1000,888));
+      g.appendChild(line(0,0,0,888));
+      g.appendChild(line(1000,0,1000,888));
+      // key & FT arc (these looked correct in your earlier version)
+      g.appendChild(rect(350,698,300,190));                  // paint
+      g.appendChild(arc(500,698,90,Math.PI,2*Math.PI));      // FT arc
       // hoop + restricted + backboard
-      const hoop = {x: PX_W/2, y: f2y(HOOP_Y_FT)};
-      g.appendChild(circle(hoop.x, hoop.y, RESTR_R_FT*PXF.x)); // restricted
-      g.appendChild(circle(hoop.x, hoop.y, RIM_R_FT*PXF.x));   // rim
-      g.appendChild(line(hoop.x - 45, hoop.y - 6*PXF.y/1.8, hoop.x + 45, hoop.y - 6*PXF.y/1.8)); // backboard (visual)
-
-      // 3pt arc + corner lines
-      // corner line height where arc meets vertical 22ft line from center:
-      const vMeetFt = Math.sqrt(ARC_R_FT*ARC_R_FT - CORNER_DIST_FT*CORNER_DIST_FT); // ≈ 8.95 ft from hoop center
-      const cornerTopY = f2y(HOOP_Y_FT + vMeetFt);
-      // left/right corner verticals at x offsets ±22ft
-      const leftX  = f2x(-CORNER_DIST_FT);
-      const rightX = f2x(+CORNER_DIST_FT);
-      g.appendChild(line(leftX, PX_H, leftX, cornerTopY));
-      g.appendChild(line(rightX, PX_H, rightX, cornerTopY));
-      // arc from left meet → right meet (above corners)
-      const aStart = Math.PI - Math.acos(CORNER_DIST_FT/ARC_R_FT);
-      const aEnd   = Math.acos(CORNER_DIST_FT/ARC_R_FT);
-      g.appendChild(arc(hoop.x, hoop.y, ARC_R_FT*PXF.x, aStart, aEnd));
-
-      svg.appendChild(g);
-    }
-
-    // Optional zone outlines (paint, midrange band, above-the-break 3)
-    function drawZones(svg){
-      if ((qs.get('zones')||'0') !== '1') return;
-      const g = el('g',{id:'zones'});
-
-      // Paint outline already exists; add dashed inner boxes for quick read
-      const keyX = PX_W/2 - (KEY_W_FT*PXF.x)/2;
-      const keyY = f2y(KEY_L_FT);
-      g.appendChild(rect(keyX, keyY, KEY_W_FT*PXF.x, KEY_L_FT*PXF.y, {class:'zone-line'}));
-
-      // Midrange band (between paint and 3pt arc excluding corners): hint line
-      const midY = f2y(16); // rough marker at ~16ft
-      g.appendChild(line(0, midY, PX_W, midY, {class:'zone-line'}));
-
-      // Above-the-break indicator (from corner meet height up)
-      const vMeetFt = Math.sqrt(ARC_R_FT*ARC_R_FT - CORNER_DIST_FT*CORNER_DIST_FT);
-      const atbY = f2y(HOOP_Y_FT + vMeetFt);
-      g.appendChild(line(0, atbY, PX_W, atbY, {class:'zone-line'}));
-
+      g.appendChild(circle(500,848,40));                     // restricted area
+      g.appendChild(circle(500,848,9));                      // rim
+      g.appendChild(line(455,842,545,842));                  // backboard
       svg.appendChild(g);
     }
 
@@ -198,14 +145,25 @@
       for (let by=0; by<binsY; by++){
         for (let bx=0; bx<binsX; bx++){
           const c=grid[by][bx];
+
+          // *** KEY FIXES ***
+          // 1) Density: don't paint empty cells (kills checkerboard)
+          // 2) FG%: hide very tiny samples, fade in with N
+          if (mode !== 'fg' && c.n === 0) continue;
+
           const t = max>0 ? (c.v/max) : 0;
-          // FG% mode: sample-aware opacity to avoid lying with tiny N
-          let alpha = 0.6;
+          let alpha = 0.55;
           if (mode==='fg'){
-            if (c.n < 3) continue;                 // hide tiny samples
-            alpha = Math.min(c.n/12, 0.75);       // fade in with N, cap
+            if (c.n < 3) continue;
+            alpha = Math.min(c.n/12, 0.75);
           }
-          g.appendChild(rect(bx*w, 888-(by+1)*h, w, h, { fill: viridis(t), 'fill-opacity': t===0?0:alpha, stroke:'none' }));
+          if (t <= 0) continue;
+
+          g.appendChild(rect(bx*w, 888-(by+1)*h, w, h, {
+            fill: viridis(t),
+            'fill-opacity': alpha,
+            stroke: 'none'
+          }));
         }
       }
       svg.appendChild(g);
@@ -216,7 +174,7 @@
       const g = el('g',{id:'dots'});
       for (const s of shots){
         const {X,Y}=mapXY(s.x,s.y);
-        g.appendChild(circle(X,Y,5,{class:`dot ${s.m?'make':'miss'}`, 'fill-opacity':0.55}));
+        g.appendChild(circle(X,Y,5,{class:`dot ${s.m?'make':'miss'}`, 'fill-opacity':0.6}));
       }
       svg.appendChild(g);
     }
@@ -230,10 +188,8 @@
       const showLegend = (qs.get('legend')||'1') !== '0';
 
       drawCourt(svg);
-      drawZones(svg);
 
       if (mode === 'dots') {
-        // density heat under dots so court still reads
         drawHeat(svg, shots, 'density', bx, by);
         drawDots(svg, shots);
       } else {
@@ -255,15 +211,8 @@
       byId('legend').hidden = !showLegend;
 
       byId('notice').innerHTML =
-        'Params: <b>s</b>=x,y,m;… (0–100), <b>mode</b>=heat|fg|dots, <b>legend</b>=1|0, <b>zones</b>=1|0, <b>dots</b>=1|0, <b>bins</b>=WxH';
+        'Params: <b>s</b>=x,y,m;… (0–100), <b>mode</b>=heat|fg|dots, <b>legend</b>=1|0, <b>dots</b>=1|0, <b>bins</b>=WxH';
     }
-
-    // tiny SVG helpers
-    function el(n,a={}){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const k in a)e.setAttribute(k,a[k]);if(!a.class&&(n==='path'||n==='line'||n==='circle'||n==='rect'))e.setAttribute('class','court-line');return e;}
-    function line(x1,y1,x2,y2,a={}){return el('line',{x1,y1,x2,y2,...a});}
-    function rect(x,y,w,h,a={}){return el('rect',{x,y,width:w,height:h,fill:'none',...a});}
-    function circle(cx,cy,r,a={}){return el('circle',{cx,cy,r,...a});}
-    function arc(cx,cy,r,s,e,a={}){const sx=cx+r*Math.cos(s),sy=cy+r*Math.sin(s),ex=cx+r*Math.cos(e),ey=cy+r*Math.sin(e),d=`M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}`;return el('path',{d,...a});}
 
     main();
   </script>
