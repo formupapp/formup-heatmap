@@ -1,331 +1,115 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FormUp Half-Court Heatmap</title>
+<svg
+  width="500"
+  height="470"
+  viewBox="0 0 500 470"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <!--
+    SCALE & DIMENSIONS (all baked in):
+    - Scale: 10 px = 1 ft
+    - Court width: 50 ft  => 500 px
+    - Half-court length: 47 ft => 470 px
+    - Baseline: y = 0
+    - Midcourt line (half court): y = 470
+    - Hoop center: (25 ft, 5.25 ft) => (250, 52.5)
+    - Backboard front: 4 ft from baseline => y = 40
+    - Lane width: 12 ft => 120 px (x = 190 to 310)
+    - Lane length: 19 ft (baseline to free-throw line) => 190 px
+    - Free-throw line: 19 ft from baseline => y = 190
+    - Free-throw circle radius: 6 ft => 60 px
+    - Restricted arc radius: 4 ft => 40 px
+    - 3PT radius: 22' 1.75" ≈ 22.1458 ft => 221.458 px
+    - 3PT verticals: 3 ft from each sideline => x = 30 px and x = 470 px
+      Intersection with the 3PT arc: y ≈ 2.713 ft => 27.127 px
+  -->
+
   <style>
-    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;background:#0b0b0c;color:#e8e8ea}
-    .wrap{position:relative;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
-    .card{position:relative;width:min(980px,96vw);aspect-ratio:9/8;background:#111215;border:1px solid #26272b;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
-    .hud{position:absolute;inset:12px 12px auto auto;display:flex;gap:8px;align-items:center}
-    .badge{padding:6px 10px;border-radius:999px;background:#1b1c21;border:1px solid #2d2f36;font-size:12px;opacity:.95}
-    .legend{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;align-items:center;padding:8px 10px;background:#121319cc;border:1px solid #2a2c33;border-radius:12px;backdrop-filter:blur(4px)}
-    .legend-bar{width:220px;height:10px;border-radius:999px;background:linear-gradient(90deg,#440154,#472878,#3e4989,#2f6c8e,#22a884,#7ad151,#fde725)}
-    svg{width:100%;height:100%;display:block}
-    .dot{fill:#e5e7eb;fill-opacity:.85;stroke:#000;stroke-width:.75}
-    .make{fill:#22c55e}.miss{fill:#ef4444}
-    .court-line{stroke:#e7e7e7;stroke-opacity:.9;stroke-width:2;fill:none}
-    .zone-line{stroke:#9aa0a6;stroke-opacity:.55;stroke-dasharray:6 6;stroke-width:1.5;fill:none}
-    .notice{position:absolute;left:12px;top:12px;font-size:12px;opacity:.7}
+    .court-line {
+      fill: none;
+      stroke: #ffffff; /* change to #000000 if you need black lines */
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
   </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <!-- defs (adjustable blur) -->
-      <svg style="position:absolute;width:0;height:0" aria-hidden="true" focusable="false">
-        <defs>
-          <filter id="smooth-heat" x="-10%" y="-10%" width="120%" height="120%">
-            <feGaussianBlur id="gblur" stdDeviation="3" />
-          </filter>
-        </defs>
-      </svg>
 
-      <div class="hud" aria-live="polite">
-        <span class="badge" id="modeBadge">Mode: –</span>
-        <span class="badge" id="makesBadge">Makes: –</span>
-        <span class="badge" id="missesBadge">Misses: –</span>
-        <span class="badge" id="fgBadge">FG%: –</span>
-      </div>
+  <!-- OUTER BOUNDARY (HALF COURT) -->
+  <!-- Baseline -->
+  <line class="court-line" x1="0"   y1="0"   x2="500" y2="0" />
+  <!-- Sidelines -->
+  <line class="court-line" x1="0"   y1="0"   x2="0"   y2="470" />
+  <line class="court-line" x1="500" y1="0"   x2="500" y2="470" />
+  <!-- Midcourt line (top of the half-court) -->
+  <line class="court-line" x1="0"   y1="470" x2="500" y2="470" />
 
-      <div class="legend" id="legend" hidden>
-        <div class="legend-bar" id="legendBar" aria-hidden="true"></div>
-        <small id="legendLabel" style="opacity:.85">Cool → Hot</small>
-      </div>
+  <!-- HOOP & BACKBOARD -->
+  <!-- Rim: 18" diameter => 9" radius = 0.75 ft => 7.5 px -->
+  <!-- Hoop center: (250, 52.5) -->
+  <circle
+    class="court-line"
+    cx="250"
+    cy="52.5"
+    r="7.5"
+  />
 
-      <svg id="viz" viewBox="0 0 1000 888" preserveAspectRatio="xMidYMid meet" aria-label="Half-court shot chart"></svg>
+  <!-- Backboard: 6 ft wide, 4 ft from baseline -->
+  <!-- Backboard front: y = 4 ft => 40 px; x = 25 ± 3 ft => 220 to 280 -->
+  <line
+    class="court-line"
+    x1="220"
+    y1="40"
+    x2="280"
+    y2="40"
+  />
 
-      <div class="notice" id="notice"></div>
-    </div>
-  </div>
+  <!-- LANE ("THE PAINT") -->
+  <!-- 12 ft wide => 120 px, centered on hoop: x = 190 to 310 -->
+  <!-- 19 ft long from baseline to free-throw line: y = 0 to 190 -->
+  <rect
+    class="court-line"
+    x="190"
+    y="0"
+    width="120"
+    height="190"
+  />
 
-  <script>
-    // ---------- helpers ----------
-    const qs = new URLSearchParams(location.search);
-    const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-    const lerp  = (a,b,t) => a + (b-a)*t;
-    const byId  = id => document.getElementById(id);
+  <!-- FREE-THROW CIRCLE -->
+  <!-- Center: (250, 190)   (19 ft from baseline) -->
+  <!-- Radius: 6 ft => 60 px -->
+  <!-- Top half (outside lane) -->
+  <path
+    class="court-line"
+    d="
+      M 190 190
+      A 60 60 0 0 1 310 190
+    "
+  />
+  <!-- Optional: bottom half (inside lane) as dashed, if you want it -->
+  <!--
+  <path
+    class="court-line"
+    stroke-dasharray="5 5"
+    d="
+      M 310 190
+      A 60 60 0 0 1 190 190
+    "
+  />
+  -->
 
-    // Viridis LUT (perceptually uniform)
-    const VIRIDIS = [
-      [68,1,84],[71,44,122],[59,81,139],[44,113,142],[33,144,141],
-      [39,173,129],[92,200,99],[170,220,50],[253,231,37]
-    ];
-    function viridis(t){
-      t = clamp(t,0,1)*(VIRIDIS.length-1);
-      const i = Math.floor(t), f = t-i;
-      const a = VIRIDIS[i], b = VIRIDIS[Math.min(i+1,VIRIDIS.length-1)];
-      const r = Math.round(lerp(a[0],b[0],f));
-      const g = Math.round(lerp(a[1],b[1],f));
-      const bl= Math.round(lerp(a[2],b[2],f));
-      return `rgb(${r},${g},${bl})`;
-    }
+  <!-- RESTRICTED AREA (4 ft radius from hoop center) -->
+  <!-- Center: (250, 52.5), Radius: 4 ft => 40 px -->
+  <!-- Front half (toward the court / free-throw line) -->
+  <path
+    class="court-line"
+    d="
+      M 210 52.5
+      A 40 40 0 0 1 290 52.5
+    "
+  />
 
-    // Diverging map for fgdiff (purple→gray→yellow via viridis + reversed)
-    function diverge(v){ // v ∈ [-1,1]
-      const t = (v+1)/2;
-      // center gray for ~0
-      if (Math.abs(v) < 0.02) return 'rgb(180,180,180)';
-      return viridis(t);
-    }
-
-    // Parse shots from ?s=x,y,m;... (x,y in 0–100; m=1 make, 0 miss)
-    function parseShots() {
-      const raw = (qs.get('s') || '').trim();
-      if (!raw) return [];
-      const parts = raw.split(';').map(p => p.trim()).filter(Boolean).slice(0, 2000);
-      const shots = [];
-      for (const p of parts) {
-        const [x,y,m] = p.split(',').map(Number);
-        if (Number.isFinite(x) && Number.isFinite(y)) shots.push({ x, y, m: (m|0) });
-      }
-      return shots;
-    }
-
-    // Optional custom bins: ?bins=30x26
-    function parseBins(defaultBx=30, defaultBy=26) {
-      const b = (qs.get('bins')||'').toLowerCase();
-      const m = b.match(/^(\d+)[x×](\d+)$/);
-      if (!m) return {bx:defaultBx, by:defaultBy};
-      return {bx: Math.max(8, +m[1]), by: Math.max(8, +m[2])};
-    }
-
-    // % coords → viewBox px
-    function mapXY(xp, yp) {
-      return { X: clamp(xp,0,100)*10, Y: 888 - clamp(yp,0,100)*8.88 };
-    }
-
-    // ---------- court geometry (NBA) ----------
-    const PX_PER_FT_X = 1000 / 50;   // width: 50 ft
-    const PX_PER_FT_Y =  888 / 47;   // half-court length: 47 ft
-    const fx = ft => ft * PX_PER_FT_X;
-    const fy = ft => ft * PX_PER_FT_Y;
-
-    const RIM_TO_BASELINE_FT = 5.25;
-    const KEY_WIDTH_FT       = 16;
-    const KEY_DEPTH_FT       = 19;
-    const RESTRICTED_R_FT    = 4;
-    const THREE_R_FT         = 23.75;
-    const THREE_CORNER_FT    = 22;
-
-    // tiny SVG helpers
-    function el(n,a={}){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const k in a)e.setAttribute(k,a[k]);if(!a.class&&(n==='path'||n==='line'||n==='circle'||n==='rect'))e.setAttribute('class','court-line');return e;}
-    function line(x1,y1,x2,y2,a={}){return el('line',{x1,y1,x2,y2,...a});}
-    function rect(x,y,w,h,a={}){return el('rect',{x,y,width:w,height:h,fill:'none',...a});}
-    function circle(cx,cy,r,a={}){return el('circle',{cx,cy,r,...a});}
-    function arc(cx,cy,rx,ry,s,e,a={}){ // elliptical arc (rx==ry ⇒ circle)
-      const sx = cx + rx*Math.cos(s), sy = cy + ry*Math.sin(s);
-      const ex = cx + rx*Math.cos(e), ey = cy + ry*Math.sin(e);
-      const large = (e - s) % (2*Math.PI) > Math.PI ? 1 : 0;
-      const d=`M ${sx} ${sy} A ${rx} ${ry} 0 ${large} 1 ${ex} ${ey}`;
-      return el('path',{d,...a});
-    }
-
-    function drawThreePoint(svg, cx, cy){
-      const g3 = el('g',{id:'three'});
-      const rx = fx(THREE_R_FT), ry = fy(THREE_R_FT);
-      const xCorner = fx(THREE_CORNER_FT);
-      const theta = Math.acos(THREE_CORNER_FT / THREE_R_FT);
-      const yFeet = THREE_R_FT * Math.sin(theta);
-      const yArc  = cy - fy(yFeet);
-      const xl = cx - xCorner, xr = cx + xCorner;
-
-      g3.appendChild(line(xl, 888, xl, yArc));
-      g3.appendChild(line(xr, 888, xr, yArc));
-      g3.appendChild(arc(cx, cy, rx, ry, Math.PI - theta, theta)); // top arc
-      svg.appendChild(g3);
-    }
-
-    function drawCourt(svg, zones=false){
-      const g = el('g',{id:'court'});
-      // sidelines/baseline
-      g.appendChild(line(0,888,1000,888));
-      g.appendChild(line(0,0,0,888));
-      g.appendChild(line(1000,0,1000,888));
-
-      const cx = 500;
-      const cy = 888 - fy(RIM_TO_BASELINE_FT);
-
-      // paint
-      const keyW = fx(KEY_WIDTH_FT);
-      const keyTopY = 888 - fy(KEY_DEPTH_FT);
-      g.appendChild(rect(cx - keyW/2, keyTopY, keyW, fy(KEY_DEPTH_FT)));
-
-      // free-throw arc (top half, 6 ft)
-      g.appendChild(arc(cx, keyTopY, fy(6), fy(6), Math.PI, 2*Math.PI));
-
-      // restricted + rim + backboard
-      g.appendChild(circle(cx, cy, fy(RESTRICTED_R_FT)));
-      g.appendChild(circle(cx, cy, fy(0.75)));
-      const bbY = 888 - fy(4) - 6; // slight visual offset
-      g.appendChild(line(cx - fx(3), bbY, cx + fx(3), bbY));
-
-      // 3pt
-      drawThreePoint(svg, cx, cy);
-
-      // optional zone guides
-      if (zones){
-        const zg = el('g',{id:'zones'});
-        zg.appendChild(rect(cx - keyW/2, keyTopY, keyW, fy(KEY_DEPTH_FT), {class:'zone-line'}));
-        // atb (above-the-break) reference = arc meet height
-        const theta = Math.acos(THREE_CORNER_FT / THREE_R_FT);
-        const yFeet = THREE_R_FT * Math.sin(theta);
-        const atbY  = cy - fy(yFeet);
-        zg.appendChild(line(0, atbY, 1000, atbY, {class:'zone-line'}));
-        svg.appendChild(zg);
-      }
-
-      svg.appendChild(g);
-    }
-
-    // --------------- binning / heat ---------------
-    function computeHeat(shots, binsX, binsY, mode, baseline){
-      const grid = Array.from({length: binsY},()=>Array.from({length: binsX},()=>({n:0,m:0,v:0})));
-      for (const s of shots){
-        const bx = Math.min(binsX-1, Math.max(0, Math.floor(s.x/(100/binsX))));
-        const by = Math.min(binsY-1, Math.max(0, Math.floor(s.y/(100/binsY))));
-        const cell = grid[by][bx];
-        cell.n++; cell.m += s.m?1:0;
-      }
-      let max=0, maxAbs=0;
-      for (const row of grid) for (const cell of row){
-        if (mode==='fg') {
-          cell.v = cell.n ? (cell.m/cell.n) : 0;
-          if (cell.v > max) max = cell.v;
-        } else if (mode==='fgdiff') {
-          const p = cell.n ? (cell.m/cell.n) : 0;
-          const d = p - baseline;
-          cell.v = d;
-          if (Math.abs(d) > maxAbs) maxAbs = Math.abs(d);
-        } else {
-          cell.v = cell.n; // density
-          if (cell.v > max) max = cell.v;
-        }
-      }
-      return {grid,max,maxAbs};
-    }
-
-    function drawHeat(svg, shots, mode, binsX, binsY, baseline){
-      const {grid,max,maxAbs} = computeHeat(shots,binsX,binsY,mode,baseline);
-      const w=1000/binsX, h=888/binsY;
-      const g=el('g',{id:'heat', filter:'url(#smooth-heat)'});
-      for (let by=0; by<binsY; by++){
-        for (let bx=0; bx<binsX; bx++){
-          const c=grid[by][bx];
-
-          // density: paint only non-empty — avoids checkerboard
-          if (mode!=='fg' && mode!=='fgdiff' && c.n===0) continue;
-
-          // fg modes: hide tiny samples, fade by attempts
-          let alpha = 0.55;
-          if (mode==='fg' || mode==='fgdiff'){
-            if (c.n < 3) continue;
-            alpha = Math.min(0.75, 0.35 + c.n/20);
-          }
-
-          let fill;
-          if (mode==='fg') {
-            const t = max>0 ? (c.v/max) : 0;
-            if (t<=0) continue;
-            fill = viridis(t);
-          } else if (mode==='fgdiff') {
-            const t = (maxAbs>0) ? (c.v / maxAbs) : 0; // -1..1
-            if (t===0) continue;
-            fill = diverge(t); // purple→gray→yellow
-          } else {
-            const t = max>0 ? (c.v/max) : 0;
-            if (t<=0) continue;
-            fill = viridis(t);
-          }
-
-          g.appendChild(rect(bx*w, 888-(by+1)*h, w, h, {
-            fill,
-            'fill-opacity': alpha,
-            stroke: 'none'
-          }));
-        }
-      }
-      svg.appendChild(g);
-    }
-
-    function drawDots(svg, shots){
-      if ((qs.get('dots')||'0') !== '1') return;
-      const g = el('g',{id:'dots'});
-      for (const s of shots){
-        const {X,Y}=mapXY(s.x,s.y);
-        g.appendChild(circle(X,Y,5,{class:`dot ${s.m?'make':'miss'}`, 'fill-opacity':0.62}));
-      }
-      svg.appendChild(g);
-    }
-
-    // --------------- build ---------------
-    function main(){
-      const svg = byId('viz');
-      const shots = parseShots();
-
-      // Auto-pretty for small samples (increase blur + coarser bins)
-      const gblur = byId('gblur');
-      let defaultBx = 30, defaultBy = 26;
-      if (shots.length < 40 && (qs.get('mode')||'heat') !== 'fg') {
-        defaultBx = 24; defaultBy = 20;
-        gblur.setAttribute('stdDeviation','6');
-      } else {
-        gblur.setAttribute('stdDeviation','3');
-      }
-
-      const {bx,by} = parseBins(defaultBx, defaultBy);
-      const mode = (qs.get('mode')||'heat').toLowerCase(); // 'heat'|'fg'|'fgdiff'|'dots'
-      const showLegend = (qs.get('legend')||'1') !== '0';
-      const showZones  = (qs.get('zones')||'0') === '1';
-      const baseline   = parseFloat(qs.get('baseline') || '0.35'); // for fgdiff
-
-      drawCourt(svg, showZones);
-
-      if (mode === 'dots') {
-        drawHeat(svg, shots, 'density', bx, by, baseline);
-        drawDots(svg, shots);
-      } else {
-        drawHeat(svg, shots, mode, bx, by, baseline);
-        drawDots(svg, shots);
-      }
-
-      const makes = shots.filter(s=>s.m).length, misses = shots.length - makes;
-      const fg = shots.length ? Math.round(makes/shots.length*100) : 0;
-
-      byId('modeBadge').textContent   = `Mode: ${mode==='fg'?'Zone FG%': mode==='fgdiff'?'FG% vs Baseline':'Density'}`;
-      byId('makesBadge').textContent  = `Makes: ${makes}`;
-      byId('missesBadge').textContent = `Misses: ${misses}`;
-      byId('fgBadge').textContent     = `FG%: ${fg}`;
-
-      if (mode==='fg') {
-        byId('legendBar').style.background = 'linear-gradient(90deg,#440154,#472878,#3e4989,#2f6c8e,#22a884,#7ad151,#fde725)';
-        byId('legendLabel').textContent = 'Cool → Hot (lower → higher FG%)';
-      } else if (mode==='fgdiff') {
-        // reuse viridis bar; copy updates not essential for functional use
-        byId('legendBar').style.background = 'linear-gradient(90deg,#440154,#472878,#3e4989,#9aa0a6,#7ad151,#bcea4e,#fde725)';
-        byId('legendLabel').textContent = `Below ← FG% vs Baseline (${(baseline*100)|0}%) → Above`;
-      } else {
-        byId('legendBar').style.background = 'linear-gradient(90deg,#440154,#472878,#3e4989,#2f6c8e,#22a884,#7ad151,#fde725)';
-        byId('legendLabel').textContent = 'Cool → Hot (lower → higher attempt density)';
-      }
-      byId('legend').hidden = !showLegend;
-
-      byId('notice').innerHTML =
-        'Params: <b>s</b>=x,y,m;… (0–100), <b>mode</b>=heat|fg|fgdiff|dots, <b>legend</b>=1|0, <b>zones</b>=1|0, <b>dots</b>=1|0, <b>bins</b>=WxH, <b>baseline</b>=0.35';
-    }
-
-    main();
-  </script>
-</body>
-</html>
+  <!-- THREE-POINT LINE (NCAA MEN'S CURRENT DISTANCE) -->
+  <!-- Radius: 22' 1.75" ≈ 22.1458 ft => 221.458 px from hoop center -->
+  <!-- Center: (250, 52.5) -->
+  <!-- Vertical straight segments 3 ft from each sideline (x = 30, 470) -->
+  <!-- Intersection with the 3PT arc solves:
+       (x - 25)^2 + (y - 5.25)^2 = (22.1458)^2
+       for x = 3 ft, y ≈ 2
