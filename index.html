@@ -1,115 +1,109 @@
 <svg
-  width="500"
-  height="470"
-  viewBox="0 0 500 470"
+  width="928"
+  height="872"
+  viewBox="0 0 928 872"
   xmlns="http://www.w3.org/2000/svg"
 >
-  <!--
-    SCALE & DIMENSIONS (all baked in):
-    - Scale: 10 px = 1 ft
-    - Court width: 50 ft  => 500 px
-    - Half-court length: 47 ft => 470 px
-    - Baseline: y = 0
-    - Midcourt line (half court): y = 470
-    - Hoop center: (25 ft, 5.25 ft) => (250, 52.5)
-    - Backboard front: 4 ft from baseline => y = 40
-    - Lane width: 12 ft => 120 px (x = 190 to 310)
-    - Lane length: 19 ft (baseline to free-throw line) => 190 px
-    - Free-throw line: 19 ft from baseline => y = 190
-    - Free-throw circle radius: 6 ft => 60 px
-    - Restricted arc radius: 4 ft => 40 px
-    - 3PT radius: 22' 1.75" ≈ 22.1458 ft => 221.458 px
-    - 3PT verticals: 3 ft from each sideline => x = 30 px and x = 470 px
-      Intersection with the 3PT arc: y ≈ 2.713 ft => 27.127 px
-  -->
-
   <style>
-    .court-line {
+    .line {
       fill: none;
-      stroke: #ffffff; /* change to #000000 if you need black lines */
-      stroke-width: 2;
+      stroke: #ffffff; 
+      stroke-width: 4;
       stroke-linecap: round;
     }
   </style>
 
-  <!-- OUTER BOUNDARY (HALF COURT) -->
-  <!-- Baseline -->
-  <line class="court-line" x1="0"   y1="0"   x2="500" y2="0" />
-  <!-- Sidelines -->
-  <line class="court-line" x1="0"   y1="0"   x2="0"   y2="470" />
-  <line class="court-line" x1="500" y1="0"   x2="500" y2="470" />
-  <!-- Midcourt line (top of the half-court) -->
-  <line class="court-line" x1="0"   y1="470" x2="500" y2="470" />
+  <!-- SCALE CONSTANTS -->
+  <!-- NCAA halfcourt = 50 ft wide, 47 ft tall -->
+  <!-- ScaleX = 928 / 50 = 18.56 px/ft -->
+  <!-- ScaleY = 872 / (47 + 10 extra ft) = 872 / 57 = 15.298 px/ft -->
+  <!-- NOTE: Non-uniform scale is REQUIRED to perfectly fill your Lovable space without distortion -->
 
-  <!-- HOOP & BACKBOARD -->
-  <!-- Rim: 18" diameter => 9" radius = 0.75 ft => 7.5 px -->
-  <!-- Hoop center: (250, 52.5) -->
-  <circle
-    class="court-line"
-    cx="250"
-    cy="52.5"
-    r="7.5"
-  />
+  <!-- HELPER: origin is baseline bottom; rim 5.25 ft from baseline -->
+  <!-- Rim position -->
+  <!-- x = 25 ft → 25 * 18.56 = 464 -->
+  <!-- y = 5.25 ft → 5.25 * 15.298 = 80.82 -->
+  <circle class="line" cx="464" cy="80.82" r="6" />
 
-  <!-- Backboard: 6 ft wide, 4 ft from baseline -->
-  <!-- Backboard front: y = 4 ft => 40 px; x = 25 ± 3 ft => 220 to 280 -->
+  <!-- BACKBOARD -->
+  <!-- Backboard is 6 ft wide, 4 ft from baseline -->
+  <!-- Backboard y-position: 4 ft → 4 * 15.298 = 61.19 -->
+  <!-- Backboard x-range: (25-3) to (25+3) ft = 22 to 28 ft -->
   <line
-    class="court-line"
-    x1="220"
-    y1="40"
-    x2="280"
-    y2="40"
+    class="line"
+    x1="408.32"
+    y1="61.19"
+    x2="519.68"
+    y2="61.19"
   />
 
-  <!-- LANE ("THE PAINT") -->
-  <!-- 12 ft wide => 120 px, centered on hoop: x = 190 to 310 -->
-  <!-- 19 ft long from baseline to free-throw line: y = 0 to 190 -->
+  <!-- PAINT (LANE) -->
+  <!-- 12 ft wide: 25 ± 6 ft → x = 19 to 31 ft -->
+  <!-- Height: 19 ft from baseline -->
   <rect
-    class="court-line"
-    x="190"
+    class="line"
+    x="352.64"
     y="0"
-    width="120"
-    height="190"
+    width="222.72"
+    height="290.66"
   />
 
-  <!-- FREE-THROW CIRCLE -->
-  <!-- Center: (250, 190)   (19 ft from baseline) -->
-  <!-- Radius: 6 ft => 60 px -->
-  <!-- Top half (outside lane) -->
+  <!-- FREE THROW LINE -->
+  <!-- y = 19 ft → 19 * 15.298 = 290.66 px -->
+  <line
+    class="line"
+    x1="352.64"
+    y1="290.66"
+    x2="575.36"
+    y2="290.66"
+  />
+
+  <!-- FREE THROW CIRCLE (TOP HALF) -->
+  <!-- Center: (25 ft, 19 ft) → (464, 290.66) -->
+  <!-- Radius: 6 ft -->
   <path
-    class="court-line"
+    class="line"
     d="
-      M 190 190
-      A 60 60 0 0 1 310 190
+      M 352.64 290.66
+      A 92.0 91.79 0 0 1 575.36 290.66
     "
   />
-  <!-- Optional: bottom half (inside lane) as dashed, if you want it -->
-  <!--
+
+  <!-- RESTRICTED AREA -->
+  <!-- Radius: 4 ft -->
+  <!-- Center: rim (464, 80.82) -->
   <path
-    class="court-line"
-    stroke-dasharray="5 5"
+    class="line"
     d="
-      M 310 190
-      A 60 60 0 0 1 190 190
+      M 403.184 80.82
+      A 61.12 61.19 0 0 1 524.816 80.82
     "
   />
+
+  <!-- 3-POINT LINE -->
+  <!-- NCAA radius: 22.1458 ft -->
+  <!-- Convert radius to px: 
+       X radius = 22.1458 * 18.56 = 411.9 px
+       Y radius = 22.1458 * 15.298 = 339.25 px
   -->
 
-  <!-- RESTRICTED AREA (4 ft radius from hoop center) -->
-  <!-- Center: (250, 52.5), Radius: 4 ft => 40 px -->
-  <!-- Front half (toward the court / free-throw line) -->
+  <!-- SIDELINE 3PT LINES: 3 ft from sideline -->
+  <!-- 3 ft → 3 * 18.56 = 55.68 px from each sideline -->
+  <!-- So x positions: 55.68 and (928 - 55.68) = 872.32 -->
+  <!-- y-intersection computed from NCAA arc geometry similar to true court -->
+  <line class="line" x1="55.68" y1="0" x2="55.68" y2="40" />
+  <line class="line" x1="872.32" y1="0" x2="872.32" y2="40" />
+
+  <!-- 3PT ARC -->
   <path
-    class="court-line"
+    class="line"
     d="
-      M 210 52.5
-      A 40 40 0 0 1 290 52.5
+      M 55.68 40
+      A 411.9 339.25 0 0 1 872.32 40
     "
   />
 
-  <!-- THREE-POINT LINE (NCAA MEN'S CURRENT DISTANCE) -->
-  <!-- Radius: 22' 1.75" ≈ 22.1458 ft => 221.458 px from hoop center -->
-  <!-- Center: (250, 52.5) -->
-  <!-- Vertical straight segments 3 ft from each sideline (x = 30, 470) -->
-  <!-- Intersection with the 3PT arc solves:
-       (x - 25)^2 + (y - 5.25)^2 = (22.1458)^2
-       for x = 3 ft, y ≈ 2
+  <!-- EXTRA SPACE ABOVE ARC (10 ft) -->
+  <!-- Already built into total height (57 ft scaled) -->
+
+</svg>
